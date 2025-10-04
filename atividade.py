@@ -6,21 +6,21 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 
-# ===== CONFIG =====
+# ===== CONFIGURAÇÕES =====
 URL_HOME = "https://www.google.com.br"
-CIDADE = "São Paulo"  # Altere para a cidade desejada ou obtenha dinamicamente.
+CIDADE = "Rio de Janeiro"
 
-HEADLESS = False   # use False se o site bloquear headless
+HEADLESS = False  # Coloque True para não abrir o navegador
 IMPLICIT_WAIT = 5
 EXPLICIT_WAIT = 25
 PROFILE_DIR = None
 
-# Caminho do seu ChromeDriver local (com .exe no Windows)
-CHROMEDRIVER_PATH = r"C:\Users\aluno\Desktop\Selenium-Investidor10-main\Selenium-Investidor10-main\chromedriver\chromedriver.exe"
+# Caminho para o ChromeDriver (.exe no Windows)
+CHROMEDRIVER_PATH = r"C:\Users\aluno\Desktop\atividade-previsao-main\atividade-previsao-main\chromedriver\chromedriver.exe"
 
-# Pasta de saída para prints
+# Pasta para salvar screenshots
 DOWNLOAD_DIR = r"C:\Users\aluno\Downloads\unieuro_downloads"
-SCREENSHOT_NAME = f"previsao_{CIDADE.lower()}.png"
+SCREENSHOT_NAME = f"previsao_{CIDADE.lower().replace(' ', '_')}.png"
 
 def create_driver(headless: bool = False):
     global PROFILE_DIR
@@ -49,57 +49,74 @@ def create_driver(headless: bool = False):
 
 def buscar_previsao_do_tempo(driver, cidade: str):
     """
-    Realiza uma busca no Google pela previsão do tempo de uma cidade.
+    Acessa o Google e busca pela previsão do tempo da cidade.
+    Aguarda a caixa de previsão com ID 'wob_wc'.
     """
     driver.get(URL_HOME)
+
+    # Espera a barra de busca carregar
     WebDriverWait(driver, EXPLICIT_WAIT).until(
         EC.presence_of_element_located((By.NAME, "q"))
     )
 
-    # Encontrar a barra de busca e fazer a pesquisa
+    # Digita a busca
     barra_de_busca = driver.find_element(By.NAME, "q")
     barra_de_busca.clear()
     barra_de_busca.send_keys(f"previsão do tempo {cidade}")
     barra_de_busca.submit()
 
-    # Espera até que o resultado da previsão esteja visível
-    WebDriverWait(driver, EXPLICIT_WAIT).until(
-        EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'BNeawe')]"))
-    )
+    # Aguarda o carregamento da caixa de previsão do tempo
+    try:
+        WebDriverWait(driver, EXPLICIT_WAIT).until(
+            EC.presence_of_element_located((By.ID, "wob_wc"))
+        )
+    except TimeoutException:
+        print("[ERRO] A caixa de previsão do tempo não foi encontrada.")
+        raise
 
 def capturar_previsao(driver, out_path: str):
     """
-    Captura a previsão do tempo da página do Google e salva uma captura de tela.
+    Captura a temperatura e condição do clima da cidade e salva um screenshot.
     """
-    # Encontrar a seção com a previsão
-    previsao_secao = driver.find_element(By.XPATH, "//div[contains(@class, 'BNeawe')]")
-    
-    # Printar as informações da previsão
-    previsao = previsao_secao.text
-    print(f"Previsão do Tempo: {previsao}")
-
-    # Capturar o screenshot da previsão
-    out_full = os.path.join(DOWNLOAD_DIR, out_path)
     try:
-        previsao_secao.screenshot(out_full)
-        print(f"[OK] Screenshot (Previsão do Tempo) salvo em: {out_full}")
-    except WebDriverException:
-        driver.save_screenshot(out_full)
-        print(f"[WARN] Screenshot do elemento falhou; salvei a janela inteira: {out_full}")
+        container = WebDriverWait(driver, EXPLICIT_WAIT).until(
+            EC.presence_of_element_located((By.ID, "wob_wc"))
+        )
+
+        # Extrai informações
+        local = container.find_element(By.ID, "wob_loc").text
+        data_hora = container.find_element(By.ID, "wob_dts").text
+        temperatura = container.find_element(By.ID, "wob_tm").text
+        clima = container.find_element(By.ID, "wob_dc").text
+
+        print("\n===== PREVISÃO DO TEMPO =====")
+        print(f"Cidade: {local}")
+        print(f"Data e Hora: {data_hora}")
+        print(f"Temperatura atual: {temperatura}°C")
+        print(f"Condição climática: {clima}")
+        print("==============================\n")
+
+        # Screenshot
+        out_full = os.path.join(DOWNLOAD_DIR, out_path)
+        container.screenshot(out_full)
+        print(f"[OK] Screenshot salvo em: {out_full}")
+
+    except (TimeoutException, NoSuchElementException) as e:
+        print("[ERRO] Não foi possível capturar a previsão.")
+        print(f"Motivo: {e}")
+        driver.save_screenshot(os.path.join(DOWNLOAD_DIR, out_path))
 
 def main():
     driver = None
     try:
         driver = create_driver(HEADLESS)
-        
-        # Buscar a previsão do tempo para a cidade
-        buscar_previsao_do_tempo(driver, CIDADE)
 
-        # Capturar a previsão do tempo
+        # Buscar e capturar previsão
+        buscar_previsao_do_tempo(driver, CIDADE)
         capturar_previsao(driver, SCREENSHOT_NAME)
 
         if not HEADLESS:
-            print("Deixando o navegador aberto por 6s para inspeção…")
+            print("Deixando o navegador aberto por 6 segundos...")
             time.sleep(6)
 
     finally:
